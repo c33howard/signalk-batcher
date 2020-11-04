@@ -1,0 +1,13 @@
+{
+  "name": "signalk-to-batch-points",
+  "version": "1.0.0",
+  "description": "Signal K helper for plugins that need to batch deltas as data points over a time interval",
+  "main": "index.js",
+  "repository": "https://github.com/c33howard/signalk-to-batch-points.git",
+  "author": "Craig Howard <craig@choward.ca>",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "debug": "^2.2.0",
+    "lodash": "^4.17.4"
+  }
+}
