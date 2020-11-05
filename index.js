@@ -122,6 +122,9 @@ module.exports = function(app) {
                     return;
                 }
 
+                // TODO: probably want to filter out data points that have a
+                // long expired timestamp
+
                 if (typeof(value) === 'object') {
                     _.forIn(value, function(v, k) {
                         _add_kv_to_batch(batch_of_points, `${path}.${k}`, v);
