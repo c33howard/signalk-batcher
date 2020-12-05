@@ -6,8 +6,15 @@
   "repository": "https://github.com/c33howard/signalk-to-batch-points.git",
   "author": "Craig Howard <craig@choward.ca>",
   "license": "Apache-2.0",
+  "scripts": {
+    "test": "mocha test.js"
+  },
   "dependencies": {
     "debug": "^2.2.0",
     "lodash": "^4.17.4"
+  },
+  "devDependencies": {
+    "chai": "^4.0.0",
+    "mocha": "^7.0.1"
   }
 }

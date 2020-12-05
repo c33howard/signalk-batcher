@@ -1,0 +1,24 @@
+{
+  "vessels": {
+    "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+      "environment": {
+        "wind": {
+          "speedApparent": {
+            "meta": {
+              "units": "m/s",
+              "description": "Apparent wind speed"
+            },
+            "value": 0,
+            "$source": "test-source",
+            "timestamp": "2020-11-29T22:21:50.443Z"
+          }
+        }
+      }
+    }
+  },
+  "self": "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+  "version": "0.1.0",
+  "sources": {
+    "test-source": {}
+  }
+}

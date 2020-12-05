@@ -51,12 +51,12 @@ module.exports = function(app) {
             if (options.filter_list_type == 'include') {
                 // if we're filtering to include elements, we'll include if at
                 // least one regex matches (ie, the search finds something)
-                return regexes.some(function(re) { return value.path.search(re) != -1; });
+                return regexes.some(function(re) { return value.search(re) != -1; });
             } else {
                 // if we're filtering to exclude, we'll include this in the
                 // result if every regex doesn't match (ie search finds
                 // nothing)
-                return regexes.every(function(re) { return value.path.search(re) == -1; });
+                return regexes.every(function(re) { return value.search(re) == -1; });
             }
         };
     };
@@ -110,7 +110,7 @@ module.exports = function(app) {
             // TODO: only handles self for now
             const vessel = state.vessels[app.selfId];
 
-            batch_of_points.header.push(Date.now());
+            batch_of_points.header.push(options.now());
 
             // for each key in the vessel, descend until we find a value
             _visit(vessel, 'value', function(path, value) {
@@ -136,11 +136,25 @@ module.exports = function(app) {
         };
     };
 
+    let _set_interval = function(interval, callback) {
+        if (typeof(interval) === 'number') {
+            return setInterval(callback, interval * 1000);
+        } else {
+            return interval(callback);
+        }
+    };
+
+    let _clear_interval = function(interval, token) {
+        if (typeof(interval) === 'number') {
+            clearInterval(token);
+        }
+    };
+
     let _create_update_interval = function(options, publish_callback) {
         let _reset_batch = function() {
             return {
                 header: [],
-                data: []
+                data: {}
             };
         };
 
@@ -154,7 +168,7 @@ module.exports = function(app) {
         let batch_of_points = _reset_batch();
 
         // periodically publish the batched metrics to timestream
-        _publish_interval = setInterval(function() {
+        _publish_interval = _set_interval(options.write_interval, function() {
             debug(`_publish`);
 
             // publish
@@ -162,17 +176,15 @@ module.exports = function(app) {
 
             // reset the batch of points
             batch_of_points = _reset_batch();
-        }, options.write_interval * 1000);
-
-        debug(`write_interval=${options.write_interval}`);
+        });
 
         // periodically get the total state of signalk
         // TODO: figure out what to do with data points that come and/or go
         // within an update interval, which is most likely due to a device
         // being turned on or off, or a plugin being stopped or started
-        _update_interval = setInterval(function() {
+        _update_interval = _set_interval(options.update_interval, function() {
             add_to_batch(batch_of_points, app.signalk.retrieve());
-        }, options.update_interval * 1000);
+        });
     };
 
     /**
@@ -180,9 +192,9 @@ module.exports = function(app) {
      *      'filter_list_type': 'include|exclude',
      *      'filter_list': [<path glob>],
      *      // how often we get the state of signalk
-     *      'update_interval': seconds,
+     *      'update_interval': seconds|function,
      *      // how often we invoke the publish callback with a batch of points
-     *      'publish_interval': seconds
+     *      'publish_interval': seconds|function
      *  }
      *
      *  publish_callback: function(batch_of_points)
@@ -193,8 +205,18 @@ module.exports = function(app) {
      *          timestamp: <Date>
      *      }]
      *  }
+     *
+     *  If update_interval or publish_interval are seconds, then we'll use
+     *  setInterval to ensure that things run on this period.  If they're a
+     *  function, we will not setup a setInterval, and it's up to the caller to
+     *  invoke those methods periodically to make forward progress.  This is
+     *  useful for unit tests (see the tests for example usage).
      */
     let _start = function(options, publish_callback) {
+        if (!options.now) {
+            options.now = Date.now;
+        }
+
         // TODO: figure out plugin init order, which is relevant when we do our
         // first retrieve(), but not all plugins have produced their first data
         // point yet
@@ -202,8 +224,8 @@ module.exports = function(app) {
     };
 
     let _stop = function(options) {
-        clearInterval(_publish_interval);
-        clearInterval(_update_interval);
+        _clear_interval(_publish_interval);
+        _clear_interval(_update_interval);
 
         _publish_interval = undefined;
         _update_interval = undefined;
