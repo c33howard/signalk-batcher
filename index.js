@@ -253,8 +253,8 @@ module.exports = function(app) {
     };
 
     let _stop = function(options) {
-        _clear_interval(_publish_interval);
-        _clear_interval(_update_interval);
+        _clear_interval(options.write_interval, _publish_interval);
+        _clear_interval(options.update_interval, _update_interval);
 
         _publish_interval = undefined;
         _update_interval = undefined;
