@@ -51,7 +51,7 @@ describe('batch-points', function() {
         _now = 1607203251539;
     });
 
-    const init = function(filter_list_type, filter_list) {
+    const init = function(options) {
         const mock_app = {
             selfId: _test_data.self.split('.')[1],
             signalk: {
@@ -62,15 +62,16 @@ describe('batch-points', function() {
         };
         bp_instance = bp(mock_app);
 
-        if (!filter_list_type) filter_list_type = 'exclude';
-        if (!filter_list) filter_list = [];
+        if (!options) options = {};
+        if (!options.filter_list_type) options.filter_list_type = 'exclude';
+        if (!options.filter_list) options.filter_list = [];
 
         bp_instance.start({
             write_interval: write_interval.init,
             update_interval: update_interval.init,
             now: function() { return _now; },
-            filter_list_type: filter_list_type,
-            filter_list: filter_list
+            filter_list_type: options.filter_list_type,
+            filter_list: options.filter_list
         }, publish.publish);
     };
 
@@ -91,7 +92,7 @@ describe('batch-points', function() {
                 1607203251539
             ],
             data: {
-                "environment.wind.speedApparent": [0]
+                "environment.wind.speedApparent|test-source": [0]
             }
         });
     });
@@ -117,7 +118,7 @@ describe('batch-points', function() {
                 1607203251540
             ],
             data: {
-                "environment.wind.speedApparent": [0, 0]
+                "environment.wind.speedApparent|test-source": [0, 0]
             }
         });
     });
@@ -143,8 +144,8 @@ describe('batch-points', function() {
                 1607203251540
             ],
             data: {
-                "environment.wind.speedApparent": [0, 0],
-                "environment.wind.angleApparent": [1.9799, 1.9799]
+                "environment.wind.speedApparent|test-source": [0, 0],
+                "environment.wind.angleApparent|test-source": [1.9799, 1.9799]
             }
         });
     });
@@ -172,7 +173,7 @@ describe('batch-points', function() {
                 1607203251540
             ],
             data: {
-                "environment.wind.speedApparent": [0, 1.2],
+                "environment.wind.speedApparent|test-source": [0, 1.2],
             }
         });
     });
@@ -193,7 +194,7 @@ describe('batch-points', function() {
                 1607203251539,
             ],
             data: {
-                "environment.wind.speedApparent": [0],
+                "environment.wind.speedApparent|test-source": [0],
             }
         });
 
@@ -219,8 +220,8 @@ describe('batch-points', function() {
                 1607203251539
             ],
             data: {
-                "navigation.position.longitude": [-122.40],
-                "navigation.position.latitude": [47.67]
+                "navigation.position.longitude|test-source": [-122.40],
+                "navigation.position.latitude|test-source": [47.67]
             }
         });
     });
@@ -228,7 +229,10 @@ describe('batch-points', function() {
     it('include-nothing', function() {
         _test_data = load_data_from_disk('./test-apparent-wind-speed-angle.json');
 
-        init('include', []);
+        init({
+            filter_list_type: 'include',
+            filter_list: []
+        });
 
         update_interval.trigger();
         write_interval.trigger();
@@ -247,7 +251,10 @@ describe('batch-points', function() {
     it('include-one-metric', function() {
         _test_data = load_data_from_disk('./test-apparent-wind-speed-angle.json');
 
-        init('include', ['environment.wind.speedApparent']);
+        init({
+            filter_list_type: 'include',
+            filter_list: ['environment.wind.speedApparent']
+        });
 
         update_interval.trigger();
         write_interval.trigger();
@@ -257,7 +264,7 @@ describe('batch-points', function() {
                 1607203251539
             ],
             data: {
-                "environment.wind.speedApparent": [0],
+                "environment.wind.speedApparent|test-source": [0],
             }
         });
     });
@@ -265,7 +272,10 @@ describe('batch-points', function() {
     it('exclude-one-metric', function() {
         _test_data = load_data_from_disk('./test-apparent-wind-speed-angle.json');
 
-        init('exclude', ['environment.wind.speedApparent']);
+        init({
+            filter_list_type: 'exclude',
+            filter_list: ['environment.wind.speedApparent']
+        });
 
         update_interval.trigger();
         write_interval.trigger();
@@ -275,7 +285,7 @@ describe('batch-points', function() {
                 1607203251539
             ],
             data: {
-                "environment.wind.angleApparent": [1.9799]
+                "environment.wind.angleApparent|test-source": [1.9799]
             }
         });
     });
@@ -283,7 +293,10 @@ describe('batch-points', function() {
     it('glob-include', function() {
         _test_data = load_data_from_disk('./test-environment-and-navigation.json');
 
-        init('include', ['environment.*']);
+        init({
+            filter_list_type: 'include',
+            filter_list: ['environment.*']
+        });
 
         update_interval.trigger();
         write_interval.trigger();
@@ -293,8 +306,8 @@ describe('batch-points', function() {
                 1607203251539
             ],
             data: {
-                "environment.wind.speedApparent": [0],
-                "environment.wind.angleApparent": [1.9799]
+                "environment.wind.speedApparent|test-source": [0],
+                "environment.wind.angleApparent|test-source": [1.9799]
             }
         });
     });
@@ -302,7 +315,10 @@ describe('batch-points', function() {
     it('glob-exclude', function() {
         _test_data = load_data_from_disk('./test-environment-and-navigation.json');
 
-        init('exclude', ['environment.*']);
+        init({
+            filter_list_type: 'exclude',
+            filter_list: ['environment.*']
+        });
 
         update_interval.trigger();
         write_interval.trigger();
@@ -312,7 +328,47 @@ describe('batch-points', function() {
                 1607203251539
             ],
             data: {
-                "navigation.speedThroughWater": [0],
+                "navigation.speedThroughWater|test-source": [0],
+            }
+        });
+    });
+
+    it('two-sources', function() {
+        _test_data = load_data_from_disk('./test-apparent-wind-speed-two-sources.json');
+
+        init();
+
+        update_interval.trigger();
+        write_interval.trigger();
+
+        publish.last().should.deep.equal({
+            header: [
+                1607203251539
+            ],
+            data: {
+                "environment.wind.speedApparent|test-source-1": [0],
+                "environment.wind.speedApparent|test-source-2": [0.5]
+            }
+        });
+    });
+
+    it('two-sources-object-value', function() {
+        _test_data = load_data_from_disk('./test-navigation-position-two-sources.json');
+
+        init();
+
+        update_interval.trigger();
+        write_interval.trigger();
+
+        publish.last().should.deep.equal({
+            header: [
+                1607203251539
+            ],
+            data: {
+                "navigation.position.longitude|test-source-1": [-122.40],
+                "navigation.position.latitude|test-source-1": [47.67],
+                "navigation.position.longitude|test-source-2": [-122.50],
+                "navigation.position.latitude|test-source-2": [47.68]
             }
         });
     });

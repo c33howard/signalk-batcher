@@ -1,0 +1,34 @@
+{
+  "vessels": {
+    "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+      "environment": {
+        "wind": {
+          "speedApparent": {
+            "meta": {
+              "units": "m/s",
+              "description": "Apparent wind speed"
+            },
+            "value": 0,
+            "$source": "test-source-1",
+            "timestamp": "2020-11-29T22:21:50.443Z",
+            "values": {
+              "test-source-1": {
+                "value": 0,
+                "timestamp": "2020-11-29T22:21:50.443Z"
+              },
+              "test-source-2": {
+                "value": 0.5,
+                "timestamp": "2020-11-29T22:21:50.443Z"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "self": "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+  "version": "0.1.0",
+  "sources": {
+    "test-source": {}
+  }
+}

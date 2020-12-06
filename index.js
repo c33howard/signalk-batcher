@@ -61,29 +61,36 @@ module.exports = function(app) {
         };
     };
 
-    // do a full object nested traversal of obj and call emit(path, obj) for
-    // every key=name, where path is the json notation of the key in the root
-    // object and obj is the found value at that key
+    // visits all nodes in obj (descending down the object tree), and calls
+    // emit() for each object that has a property of 'name'.
     //
-    // ie
+    // ie:
     //  {
-    //      'a': 1,
-    //      'b': {
-    //          'a': 2
+    //      a: {
+    //          n: { 1: 2 },
+    //          b: {
+    //              n: 3
+    //          }
     //      }
     //  }
     //
-    // will call emit('a', 1) and emit('a.b', 2)
+    // when called _visit(obj, 'n', emit), this function will invoke emit:
+    //
+    //  emit('a.n', { 1: 2 })
+    //  emit('a.b.n', 3)
     let _visit = function(obj, name, emit) {
         let _do_visit = function(obj, name, path, emit) {
             Object.keys(obj).forEach(key => {
                 const key_path = path != '' ? `${path}.${key}`: key;
                 const value = obj[key];
 
-                if (key === name) {
+                // if this object has a propery that matches name, it's the one
+                // we're looking for, so emit it
+                if (_.has(value, name)) {
                     emit(key_path, value);
                 }
 
+                // if this is an object, recurse into it
                 if (value && typeof(value) == 'object') {
                     _do_visit(value, name, key_path, emit);
                 }
@@ -93,13 +100,28 @@ module.exports = function(app) {
         return _do_visit(obj, name, '', emit);
     };
 
-    let _add_kv_to_batch = function(batch_of_points, path, value) {
-        if (!batch_of_points.data[path]) {
-            batch_of_points.data[path] = [];
+    let _add_kv_to_batch = function(batch_of_points, path, source, value) {
+        // sigh, it would be *so* much nicer if everything was just points, so
+        // convert from objects to points where we're forced to
+        if (typeof(value) === 'object') {
+            _.forIn(value, function(v, k) {
+                _add_kv_to_batch(batch_of_points, `${path}.${k}`, source, v);
+            });
+
+            return;
         }
 
-        trace(`add to batch: ${path} ${value}`);
-        batch_of_points.data[path].push(value);
+        // relying on a text delimiter is a bit lame, but this really is a
+        // composite key, as it's valid to have the same path from two
+        // different sources
+        const key = `${path}|${source}`;
+
+        if (!batch_of_points.data[key]) {
+            batch_of_points.data[key] = [];
+        }
+
+        trace(`add to batch: ${path} ${source} ${value}`);
+        batch_of_points.data[key].push(value);
     };
 
     let _add_current_state_to_batch = function(options) {
@@ -112,25 +134,32 @@ module.exports = function(app) {
 
             batch_of_points.header.push(options.now());
 
-            // for each key in the vessel, descend until we find a value
-            _visit(vessel, 'value', function(path, value) {
-                // trim ".value" from the suffix of the path
-                path = path.replace(/\.value$/, '');
-
+            // for each key in the vessel, descend until we find something
+            // which a $source (which everything will have, since the full
+            // model always uses the pointer method
+            _visit(vessel, '$source', function(path, value) {
                 // skip anything filtered out
                 if (!filter_function(path)) {
                     return;
                 }
 
+                const source = value['$source'];
+
                 // TODO: probably want to filter out data points that have a
                 // long expired timestamp
 
-                if (typeof(value) === 'object') {
-                    _.forIn(value, function(v, k) {
-                        _add_kv_to_batch(batch_of_points, `${path}.${k}`, v);
+                _add_kv_to_batch(batch_of_points, path, source, value.value);
+
+                // if there are multiple sources providing a value, they'll be
+                // in a nested key called "values" (plural), which is a dict,
+                // and the key is the $source, and the value is an object with
+                // "value" and "timestamp"
+                if (value.values) {
+                    // we've already emitted the primary value, so skip it
+                    const secondary_values = _.omit(value.values, source);
+                    _.forIn(secondary_values, function(v, source) {
+                        _add_kv_to_batch(batch_of_points, path, source, v.value);
                     });
-                } else {
-                    _add_kv_to_batch(batch_of_points, path, value);
                 }
             });
         };

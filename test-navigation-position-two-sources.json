@@ -1,0 +1,40 @@
+{
+  "vessels": {
+    "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+      "navigation": {
+        "position": {
+          "meta": {
+            "description": "The position of the vessel in 2 or 3 dimensions (WGS84 datum)"
+          },
+          "value": {
+            "longitude": -122.40,
+            "latitude": 47.67
+          },
+          "$source": "test-source-1",
+          "timestamp": "2020-11-29T22:21:50.443Z",
+          "values": {
+            "test-source-1": {
+              "timestamp": "2020-11-29T22:21:50.443Z",
+              "value": {
+                "longitude": -122.40,
+                "latitude": 47.67
+              }
+            },
+            "test-source-2": {
+              "timestamp": "2020-11-29T22:21:50.443Z",
+              "value": {
+                "longitude": -122.50,
+                "latitude": 47.68
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "self": "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+  "version": "0.1.0",
+  "sources": {
+    "test-source": {}
+  }
+}
