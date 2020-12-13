@@ -21,8 +21,8 @@ describe('batch-points', function() {
         };
     };
 
-    let update_interval = trigger();
-    let write_interval = trigger();
+    let get_interval = trigger();
+    let publish_interval = trigger();
 
     // this function is required (rather than using require() directly), so
     // that we can modify the data in one test and then get clean data again in
@@ -45,10 +45,16 @@ describe('batch-points', function() {
         }
     }();
 
+    let update_data = function(_test_data, path, millis, value) {
+        const vessel = _test_data.vessels[_test_data.self.split('.')[1]];
+        _.set(vessel, `${path}.timestamp`, new Date(millis).toISOString());
+        _.set(vessel, `${path}.value`, value);
+    };
+
     let _now;
 
     beforeEach(function() {
-        _now = 1607203251539;
+        _now = 1606688510443;
     });
 
     const init = function(options) {
@@ -67,8 +73,8 @@ describe('batch-points', function() {
         if (!options.filter_list) options.filter_list = [];
 
         bp_instance.start({
-            write_interval: write_interval.init,
-            update_interval: update_interval.init,
+            publish_interval: publish_interval.init,
+            get_interval: get_interval.init,
             now: function() { return _now; },
             filter_list_type: options.filter_list_type,
             filter_list: options.filter_list
@@ -84,42 +90,140 @@ describe('batch-points', function() {
 
         init();
 
-        update_interval.trigger();
-        write_interval.trigger();
+        get_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [
-                1607203251539
-            ],
-            data: {
-                "environment.wind.speedApparent|test-source": [0]
-            }
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            speedApparent: {
+                                "test-source": [[0, 0]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
 
-    it('publish-two-times', function() {
+    it('get-twice-no-new-observations', function() {
         _test_data = load_data_from_disk('./test-apparent-wind-speed.json');
 
         init();
 
         // get data
-        update_interval.trigger();
+        get_interval.trigger();
         // advance time
         _now++;
         // get data
-        update_interval.trigger();
+        get_interval.trigger();
 
         // write
-        write_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [
-                1607203251539,
-                1607203251540
-            ],
-            data: {
-                "environment.wind.speedApparent|test-source": [0, 0]
-            }
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            speedApparent: {
+                                // it's the same value and the observation hasn't updated, so omit
+                                "test-source": [[0, 0]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
+        });
+    });
+
+    it('get-twice-new-observations', function() {
+        _test_data = load_data_from_disk('./test-apparent-wind-speed.json');
+
+        init();
+
+        // get data
+        get_interval.trigger();
+        // advance time
+        _now++;
+        // update the data
+        update_data(_test_data, 'environment.wind.speedApparent', _now, 1.2);
+        // get data
+        get_interval.trigger();
+
+        // write
+        publish_interval.trigger();
+
+        publish.last().should.deep.equal({
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            speedApparent: {
+                                "test-source": [[0, 0], [1, 1.2]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
+        });
+    });
+
+    it('get-twice-new-same-observation', function() {
+        _test_data = load_data_from_disk('./test-apparent-wind-speed.json');
+
+        init();
+
+        // get data
+        get_interval.trigger();
+        // advance time
+        _now++;
+        // update the data
+        update_data(_test_data, 'environment.wind.speedApparent', _now, 0);
+        // get data
+        get_interval.trigger();
+
+        // write
+        publish_interval.trigger();
+
+        publish.last().should.deep.equal({
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            speedApparent: {
+                                "test-source": [[0, 0], [1]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
 
@@ -129,24 +233,38 @@ describe('batch-points', function() {
         init();
 
         // get data
-        update_interval.trigger();
+        get_interval.trigger();
         // advance time
         _now++;
+        update_data(_test_data, 'environment.wind.speedApparent', _now, 1.2);
+        update_data(_test_data, 'environment.wind.angleApparent', _now, 1.978);
         // get data
-        update_interval.trigger();
+        get_interval.trigger();
 
         // write
-        write_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [
-                1607203251539,
-                1607203251540
-            ],
-            data: {
-                "environment.wind.speedApparent|test-source": [0, 0],
-                "environment.wind.angleApparent|test-source": [1.9799, 1.9799]
-            }
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            speedApparent: {
+                                "test-source": [[0, 0], [1, 1.2]]
+                            },
+                            angleApparent: {
+                                "test-source": [[0, 1.9799], [1, 1.978]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
 
@@ -156,25 +274,35 @@ describe('batch-points', function() {
         init();
 
         // get data
-        update_interval.trigger();
+        get_interval.trigger();
         // advance time
         _now++;
         // change wind speed
-        _test_data.vessels[_test_data.self.split('.')[1]].environment.wind.speedApparent.value = 1.2;
+        update_data(_test_data, 'environment.wind.speedApparent', _now, 1.2);
         // get data
-        update_interval.trigger();
+        get_interval.trigger();
 
         // write
-        write_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [
-                1607203251539,
-                1607203251540
-            ],
-            data: {
-                "environment.wind.speedApparent|test-source": [0, 1.2],
-            }
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            speedApparent: {
+                                "test-source": [[0, 0], [1, 1.2]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
 
@@ -184,26 +312,38 @@ describe('batch-points', function() {
         init();
 
         // get data
-        update_interval.trigger();
+        get_interval.trigger();
 
         // write
-        write_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [
-                1607203251539,
-            ],
-            data: {
-                "environment.wind.speedApparent|test-source": [0],
-            }
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            speedApparent: {
+                                "test-source": [[0, 0]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
         });
 
         // write again, should be empty
-        write_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [],
-            data: {}
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
 
@@ -212,17 +352,54 @@ describe('batch-points', function() {
 
         init();
 
-        update_interval.trigger();
-        write_interval.trigger();
+        get_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [
-                1607203251539
-            ],
-            data: {
-                "navigation.position.longitude|test-source": [-122.40],
-                "navigation.position.latitude|test-source": [47.67]
-            }
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    navigation: {
+                        position: {
+                            latitude: {
+                                "test-source": [[0, 47.67]]
+                            },
+                            longitude: {
+                                "test-source": [[0, -122.4]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
+        });
+    });
+
+    it('ignore-old-data', function() {
+        _test_data = load_data_from_disk('./test-apparent-wind-speed-angle.json');
+
+        // start in the future, so what we get from the source is old
+        _now += 100;
+
+        init();
+
+        get_interval.trigger();
+        publish_interval.trigger();
+
+        publish.last().should.deep.equal({
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {}
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.543Z"
         });
     });
 
@@ -234,17 +411,19 @@ describe('batch-points', function() {
             filter_list: []
         });
 
-        update_interval.trigger();
-        write_interval.trigger();
+        get_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [
-                // TODO: is it right to have the time, even though everything
-                // was filtered?
-                1607203251539
-            ],
-            data: {
-            }
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {}
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
 
@@ -256,16 +435,27 @@ describe('batch-points', function() {
             filter_list: ['environment.wind.speedApparent']
         });
 
-        update_interval.trigger();
-        write_interval.trigger();
+        get_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [
-                1607203251539
-            ],
-            data: {
-                "environment.wind.speedApparent|test-source": [0],
-            }
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            speedApparent: {
+                                "test-source": [[0, 0]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
 
@@ -277,16 +467,27 @@ describe('batch-points', function() {
             filter_list: ['environment.wind.speedApparent']
         });
 
-        update_interval.trigger();
-        write_interval.trigger();
+        get_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [
-                1607203251539
-            ],
-            data: {
-                "environment.wind.angleApparent|test-source": [1.9799]
-            }
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            angleApparent: {
+                                "test-source": [[0, 1.9799]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
 
@@ -298,17 +499,30 @@ describe('batch-points', function() {
             filter_list: ['environment.*']
         });
 
-        update_interval.trigger();
-        write_interval.trigger();
+        get_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [
-                1607203251539
-            ],
-            data: {
-                "environment.wind.speedApparent|test-source": [0],
-                "environment.wind.angleApparent|test-source": [1.9799]
-            }
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            speedApparent: {
+                                "test-source": [[0, 0]]
+                            },
+                            angleApparent: {
+                                "test-source": [[0, 1.9799]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
 
@@ -320,16 +534,25 @@ describe('batch-points', function() {
             filter_list: ['environment.*']
         });
 
-        update_interval.trigger();
-        write_interval.trigger();
+        get_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [
-                1607203251539
-            ],
-            data: {
-                "navigation.speedThroughWater|test-source": [0],
-            }
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    navigation: {
+                        speedThroughWater: {
+                            "test-source": [[0, 0]]
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
 
@@ -338,17 +561,28 @@ describe('batch-points', function() {
 
         init();
 
-        update_interval.trigger();
-        write_interval.trigger();
+        get_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [
-                1607203251539
-            ],
-            data: {
-                "environment.wind.speedApparent|test-source-1": [0],
-                "environment.wind.speedApparent|test-source-2": [0.5]
-            }
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            speedApparent: {
+                                "test-source-1": [[0, 0]],
+                                "test-source-2": [[0, 0.5]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
 
@@ -357,19 +591,68 @@ describe('batch-points', function() {
 
         init();
 
-        update_interval.trigger();
-        write_interval.trigger();
+        get_interval.trigger();
+        publish_interval.trigger();
 
         publish.last().should.deep.equal({
-            header: [
-                1607203251539
-            ],
-            data: {
-                "navigation.position.longitude|test-source-1": [-122.40],
-                "navigation.position.latitude|test-source-1": [47.67],
-                "navigation.position.longitude|test-source-2": [-122.50],
-                "navigation.position.latitude|test-source-2": [47.68]
-            }
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    navigation: {
+                        position: {
+                            latitude: {
+                                "test-source-1": [[0, 47.67]],
+                                "test-source-2": [[0, 47.68]]
+                            },
+                            longitude: {
+                                "test-source-1": [[0, -122.40]],
+                                "test-source-2": [[0, -122.50]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
+        });
+    });
+
+    it('complex-source', function() {
+        _test_data = load_data_from_disk('./test-complex-source.json');
+
+        init();
+
+        get_interval.trigger();
+        publish_interval.trigger();
+
+        publish.last().should.deep.equal({
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            speedApparent: {
+                                "test-source": [[0, 0]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {
+                    key1: 1,
+                    key2: 2,
+                    key3: {
+                        a: 'b',
+                        c: 'd'
+                    }
+                }
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
 });

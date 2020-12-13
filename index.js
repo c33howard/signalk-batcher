@@ -18,8 +18,9 @@ const trace = require('debug')('signalk-to-batch-points:trace');
 const _ = require('lodash');
 
 module.exports = function(app) {
-    let _publish_interval;
-    let _update_interval;
+    let _clear_publish_interval;
+    let _clear_get_interval;
+    let _last_publish_time;
 
     let _construct_filter_function = function(options) {
         const regexes = options.filter_list.map(function(path) {
@@ -100,28 +101,64 @@ module.exports = function(app) {
         return _do_visit(obj, name, '', emit);
     };
 
+    let _merge_points = function(value_at_path, source, delta_t, value) {
+        // if we've not seen this key before, just move it to the result
+        // and we're done
+        if (!value_at_path[source]) {
+            value_at_path[source] = [[delta_t, value]];
+            return;
+        }
+
+        const last_delta_t = _.last(value_at_path[source])[0];
+        const last_value = _.last(value_at_path[source])[1];
+
+        // if we already have a value for this key, we have three cases:
+        // 1. no new observation (ie same time) -> skip the merge
+        if (last_delta_t == delta_t) {
+            // pass
+        }
+        // 2. new observation that's different -> append
+        else if (last_value !== value) {
+            value_at_path[source].push([delta_t, value]);
+        }
+        // 3. new observation that's the same -> append time only
+        else {
+            value_at_path[source].push([delta_t]);
+        }
+    };
+
     let _add_kv_to_batch = function(batch_of_points, path, source, value) {
         // sigh, it would be *so* much nicer if everything was just points, so
         // convert from objects to points where we're forced to
-        if (typeof(value) === 'object') {
-            _.forIn(value, function(v, k) {
-                _add_kv_to_batch(batch_of_points, `${path}.${k}`, source, v);
+        if (typeof(value.value) === 'object') {
+            _.forIn(value.value, function(v, k) {
+                // construct a fake value object to recurse on, which makes it
+                // look like we actually had two separate values, which is what
+                // we want
+                const object_value = {
+                    $source: value.$source,
+                    timestamp: value.timestamp,
+                    value: v
+                };
+                _add_kv_to_batch(batch_of_points, `${path}.${k}`, source, object_value);
             });
 
             return;
         }
 
-        // relying on a text delimiter is a bit lame, but this really is a
-        // composite key, as it's valid to have the same path from two
-        // different sources
-        const key = `${path}|${source}`;
+        // TODO: need a way to distinguish the primary source from secondary
+        // sources
 
-        if (!batch_of_points.data[key]) {
-            batch_of_points.data[key] = [];
-        }
+        // the time we care about is the delta between the last publish time
+        // and this data point
+        const delta_t = Date.parse(value.timestamp) - _last_publish_time;
 
-        trace(`add to batch: ${path} ${source} ${value}`);
-        batch_of_points.data[key].push(value);
+        // first, get any existing objects at this path
+        const value_at_path = _.get(batch_of_points, path, {});
+        // next, merge the stuff to add
+        _merge_points(value_at_path, source, delta_t, value.value);
+        // finally, put it back at the path
+        _.set(batch_of_points, path, value_at_path);
     };
 
     let _add_current_state_to_batch = function(options) {
@@ -132,23 +169,33 @@ module.exports = function(app) {
             // TODO: only handles self for now
             const vessel = state.vessels[app.selfId];
 
-            batch_of_points.header.push(options.now());
+            // create or get the vessel target
+            if (!batch_of_points.vessels) {
+                batch_of_points.vessels = {};
+                batch_of_points.vessels[app.selfId] = {};
+            }
+            const vessel_target = batch_of_points.vessels[app.selfId];
+
+            _.defaultsDeep(batch_of_points, { sources: state.sources });
 
             // for each key in the vessel, descend until we find something
-            // which a $source (which everything will have, since the full
+            // which has a $source (which everything will have, since the full
             // model always uses the pointer method
             _visit(vessel, '$source', function(path, value) {
                 // skip anything filtered out
                 if (!filter_function(path)) {
+                    trace(`filtered out ${path}`);
                     return;
                 }
 
-                const source = value['$source'];
+                // skip over metrics that haven't been updated since before the
+                // last time we published
+                if (Date.parse(value.timestamp) < _last_publish_time) {
+                    trace(`filtered too old ${path} ${Date.parse(value.timestamp)} ${_last_publish_time}`);
+                    return;
+                }
 
-                // TODO: probably want to filter out data points that have a
-                // long expired timestamp
-
-                _add_kv_to_batch(batch_of_points, path, source, value.value);
+                _add_kv_to_batch(vessel_target, path, value.$source, value);
 
                 // if there are multiple sources providing a value, they'll be
                 // in a nested key called "values" (plural), which is a dict,
@@ -156,9 +203,14 @@ module.exports = function(app) {
                 // "value" and "timestamp"
                 if (value.values) {
                     // we've already emitted the primary value, so skip it
-                    const secondary_values = _.omit(value.values, source);
+                    const secondary_values = _.omit(value.values, value.$source);
                     _.forIn(secondary_values, function(v, source) {
-                        _add_kv_to_batch(batch_of_points, path, source, v.value);
+                        const source_object = {
+                            $source: source,
+                            timestamp: v.timestamp,
+                            value: v.value,
+                        };
+                        _add_kv_to_batch(vessel_target, path, source, source_object);
                     });
                 }
             });
@@ -179,12 +231,9 @@ module.exports = function(app) {
         }
     };
 
-    let _create_update_interval = function(options, publish_callback) {
+    let _create_get_interval = function(options, publish_callback) {
         let _reset_batch = function() {
-            return {
-                header: [],
-                data: {}
-            };
+            return {};
         };
 
         // construct the filter function once and use the result
@@ -196,24 +245,37 @@ module.exports = function(app) {
         // that's what will be published to timestream
         let batch_of_points = _reset_batch();
 
-        // periodically publish the batched metrics to timestream
-        _publish_interval = _set_interval(options.write_interval, function() {
+        // periodically emit the metrics for publishing
+        publish_interval = _set_interval(options.publish_interval, function() {
             debug(`_publish`);
+
+            _.defaults(batch_of_points, {
+                timestamp: new Date(_last_publish_time).toISOString(),
+                self: app.selfId,
+                version: "2.0.0"
+            });
 
             // publish
             publish_callback(batch_of_points);
 
             // reset the batch of points
             batch_of_points = _reset_batch();
+
+            // update publish time (so that we don't add stale metrics to the
+            // next batch)
+            _last_publish_time = options.now();
         });
+        _clear_publish_interval = function() {
+            _clear_interval(options.publish_interval, publish_interval);
+        };
 
         // periodically get the total state of signalk
-        // TODO: figure out what to do with data points that come and/or go
-        // within an update interval, which is most likely due to a device
-        // being turned on or off, or a plugin being stopped or started
-        _update_interval = _set_interval(options.update_interval, function() {
+        get_interval = _set_interval(options.get_interval, function() {
             add_to_batch(batch_of_points, app.signalk.retrieve());
         });
+        _clear_get_interval = function() {
+            _clear_interval(options.get_interval, get_interval);
+        };
     };
 
     /**
@@ -221,7 +283,7 @@ module.exports = function(app) {
      *      'filter_list_type': 'include|exclude',
      *      'filter_list': [<path glob>],
      *      // how often we get the state of signalk
-     *      'update_interval': seconds|function,
+     *      'get_interval': seconds|function,
      *      // how often we invoke the publish callback with a batch of points
      *      'publish_interval': seconds|function
      *  }
@@ -235,7 +297,7 @@ module.exports = function(app) {
      *      }]
      *  }
      *
-     *  If update_interval or publish_interval are seconds, then we'll use
+     *  If get_interval or publish_interval are seconds, then we'll use
      *  setInterval to ensure that things run on this period.  If they're a
      *  function, we will not setup a setInterval, and it's up to the caller to
      *  invoke those methods periodically to make forward progress.  This is
@@ -246,18 +308,23 @@ module.exports = function(app) {
             options.now = Date.now;
         }
 
+        _last_publish_time = options.now();
+
         // TODO: figure out plugin init order, which is relevant when we do our
         // first retrieve(), but not all plugins have produced their first data
         // point yet
-        _create_update_interval(options, publish_callback);
+        _create_get_interval(options, publish_callback);
     };
 
     let _stop = function(options) {
-        _clear_interval(options.write_interval, _publish_interval);
-        _clear_interval(options.update_interval, _update_interval);
-
-        _publish_interval = undefined;
-        _update_interval = undefined;
+        if (_clear_publish_interval) {
+            _clear_publish_interval();
+            _clear_publish_interval = undefined;
+        }
+        if (_clear_get_interval) {
+            _clear_get_interval();
+            _clear_get_interval = undefined;
+        }
     };
 
     return {
