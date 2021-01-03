@@ -109,8 +109,13 @@ module.exports = function(app) {
             return;
         }
 
+        // last delta_t is the first element of the last pair in the list
         const last_delta_t = _.last(value_at_path[source])[0];
-        const last_value = _.last(value_at_path[source])[1];
+        // last_value is the second element of the first pair of size 2 in the list
+        // (if the size is 1, then the value matches the prior pair)
+        const last_value = _.findLast(value_at_path[source], function(pair) {
+            return pair.length == 2;
+        })[1];
 
         // if we already have a value for this key, we have three cases:
         // 1. no new observation (ie same time) -> skip the merge

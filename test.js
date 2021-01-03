@@ -227,6 +227,50 @@ describe('batch-points', function() {
         });
     });
 
+    it('get-thrice-new-same-observation', function() {
+        _test_data = load_data_from_disk('./test-apparent-wind-speed.json');
+
+        init();
+
+        // get data
+        get_interval.trigger();
+        // advance time
+        _now++;
+        // update the data
+        update_data(_test_data, 'environment.wind.speedApparent', _now, 0);
+        // get data
+        get_interval.trigger();
+        // advance time
+        _now++;
+        // update the data
+        update_data(_test_data, 'environment.wind.speedApparent', _now, 0);
+        // get data
+        get_interval.trigger();
+
+        // write
+        publish_interval.trigger();
+
+        publish.last().should.deep.equal({
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            speedApparent: {
+                                "test-source": [[0, 0], [1], [2]]
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
+        });
+    });
+
     it('publish-two-metrics', function() {
         _test_data = load_data_from_disk('./test-apparent-wind-speed-angle.json');
 
