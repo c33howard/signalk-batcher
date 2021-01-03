@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-const debug = require('debug')('signalk-to-batch-points');
-const trace = require('debug')('signalk-to-batch-points:trace');
+const debug = require('debug')('signalk-batcher');
+const trace = require('debug')('signalk-batcher:trace');
 const _ = require('lodash');
 
 module.exports = function(app) {
