@@ -162,8 +162,10 @@ module.exports = function(app) {
         const value_at_path = _.get(batch_of_points, path, {});
         // next, merge the stuff to add
         _merge_points(value_at_path, source, delta_t, value.value);
-        // finally, put it back at the path
-        _.set(batch_of_points, path, value_at_path);
+        // finally, put it back at the path (note: use _.setWith(..., Object)
+        // to force property creation, instead of array creation when a path
+        // element is an integer)
+        _.setWith(batch_of_points, path, value_at_path, Object);
     };
 
     let _add_current_state_to_batch = function(options) {

@@ -699,4 +699,60 @@ describe('batch-points', function() {
             timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
+
+    it('test-rpi', function() {
+        _test_data = load_data_from_disk('./test-rpi.json');
+
+        init();
+
+        get_interval.trigger();
+        publish_interval.trigger();
+
+        publish.last().should.deep.equal({
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        rpi: {
+                            cpu: {
+                                temperature: {
+                                    "signalk-raspberry-pi-monitoring": [[0, 324.69]]
+                                },
+                                utilisation: {
+                                    "signalk-raspberry-pi-monitoring": [[0, 0.07]]
+                                },
+                                core: {
+                                    1: {
+                                        utilisation: {
+                                            "signalk-raspberry-pi-monitoring": [[0, 0.06]]
+                                        }
+                                    },
+                                    2: {
+                                        utilisation: {
+                                            "signalk-raspberry-pi-monitoring": [[0, 0.08]]
+                                        }
+                                    },
+                                    3: {
+                                        utilisation: {
+                                            "signalk-raspberry-pi-monitoring": [[0, 0.08]]
+                                        }
+                                    },
+                                    4: {
+                                        utilisation: {
+                                            "signalk-raspberry-pi-monitoring": [[0, 0.06]]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            sources: {
+                "signalk-raspberry-pi-monitoring": {}
+            },
+            timestamp: "2020-11-29T22:21:50.443Z"
+        });
+    });
 });

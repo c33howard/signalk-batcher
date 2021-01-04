@@ -1,0 +1,58 @@
+{
+  "vessels": {
+    "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+      "environment": {
+        "rpi": {
+          "cpu": {
+            "temperature": {
+              "value": 324.69,
+              "$source": "signalk-raspberry-pi-monitoring",
+              "timestamp": "2020-11-29T22:21:50.443Z"
+            },
+            "utilisation": {
+              "value": 0.07,
+              "$source": "signalk-raspberry-pi-monitoring",
+              "timestamp": "2020-11-29T22:21:50.443Z"
+            },
+            "core": {
+              "1": {
+                "utilisation": {
+                  "value": 0.06,
+                  "$source": "signalk-raspberry-pi-monitoring",
+                  "timestamp": "2020-11-29T22:21:50.443Z"
+                }
+              },
+              "2": {
+                "utilisation": {
+                  "value": 0.08,
+                  "$source": "signalk-raspberry-pi-monitoring",
+                  "timestamp": "2020-11-29T22:21:50.443Z"
+                }
+              },
+              "3": {
+                "utilisation": {
+                  "value": 0.08,
+                  "$source": "signalk-raspberry-pi-monitoring",
+                  "timestamp": "2020-11-29T22:21:50.443Z"
+                }
+              },
+              "4": {
+                "utilisation": {
+                  "value": 0.06,
+                  "$source": "signalk-raspberry-pi-monitoring",
+                  "timestamp": "2020-11-29T22:21:50.443Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "self": "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+  "version": "0.1.0",
+  "sources": {
+    "signalk-raspberry-pi-monitoring": {}
+  }
+}
+
