@@ -2,9 +2,19 @@ const chai = require('chai');
 const should = chai.should();
 const _ = require('lodash');
 
-const bp = require('.');
+const batcher = require('.');
+const from = batcher.from;
+const to = batcher.to;
 
-describe('batch-points', function() {
+// this function is required (rather than using require() directly), so
+// that we can modify the data in one test and then get clean data again in
+// the next test
+let load_data_from_disk = function(filename) {
+    const loaded_data = require(filename);
+    return _.cloneDeep(loaded_data);
+};
+
+describe('to-batch', function() {
     let _test_data;
     let bp_instance;
 
@@ -23,14 +33,6 @@ describe('batch-points', function() {
 
     let get_interval = trigger();
     let publish_interval = trigger();
-
-    // this function is required (rather than using require() directly), so
-    // that we can modify the data in one test and then get clean data again in
-    // the next test
-    let load_data_from_disk = function(filename) {
-        const loaded_data = require(filename);
-        return _.cloneDeep(loaded_data);
-    };
 
     let publish = function() {
         let _last_batch = {};
@@ -66,7 +68,7 @@ describe('batch-points', function() {
                 }
             }
         };
-        bp_instance = bp(mock_app);
+        bp_instance = to(mock_app);
 
         if (!options) options = {};
         if (!options.filter_list_type) options.filter_list_type = 'exclude';
@@ -754,5 +756,142 @@ describe('batch-points', function() {
             },
             timestamp: "2020-11-29T22:21:50.443Z"
         });
+    });
+});
+
+describe('from-batch', function() {
+    it('test-basic-load', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688510443,
+                value: 2.43
+            },
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688515443,
+                value: 2.44
+            },
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688520443,
+                value: 2.41
+            },
+        ]);
+    });
+
+    it('test-unchanged-value', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed-unchanged.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688510443,
+                value: 2.43
+            },
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688515443,
+                value: 2.43
+            },
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688520443,
+                value: 2.43
+            },
+        ]);
+    });
+
+    it('test-unchanged-then-changed-value', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed-unchanged-then-changed.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688510443,
+                value: 2.43
+            },
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688515443,
+                value: 2.43
+            },
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688520443,
+                value: 2.5
+            },
+        ]);
+    });
+
+    it('test-initial-zero', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed-initial-zero.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688510443,
+                value: 0
+            },
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688515443,
+                value: 0
+            },
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688520443,
+                value: 1.2
+            },
+        ]);
+    });
+
+    it('test-intermediate-zero', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed-intermediate-zero.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688510443,
+                value: 1.1
+            },
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688515443,
+                value: 0
+            },
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688520443,
+                value: 1.2
+            },
+        ]);
     });
 });

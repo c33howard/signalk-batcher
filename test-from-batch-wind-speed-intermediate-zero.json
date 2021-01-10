@@ -1,0 +1,58 @@
+{
+  "vessels": {
+    "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+      "environment": {
+        "wind": {
+          "speedApparent": {
+            "test-source": [
+              [
+                0,
+                1.1
+              ],
+              [
+                5000,
+                0
+              ],
+              [
+                10000,
+                1.2
+              ]
+            ]
+          }
+        }
+      }
+    }
+  },
+  "sources": {
+    "test-source": {
+      "n2k": {
+        "pgns": {
+          "59392": "2021-01-04T04:34:15.389Z",
+          "60928": "2021-01-04T04:34:00.527Z",
+          "126996": "2021-01-04T04:34:05.448Z",
+          "127250": "2021-01-08T23:59:04.422Z",
+          "127251": "2021-01-08T23:59:04.421Z",
+          "127257": "2021-01-08T23:59:04.424Z"
+        },
+        "src": "9",
+        "manufacturerName": "Navico",
+        "deviceFunction": 140,
+        "deviceClass": "Navigation",
+        "deviceInstanceLower": 0,
+        "deviceInstanceUpper": 0,
+        "systemInstance": 0,
+        "deviceInstance": 0,
+        "productName": "    ",
+        "hardwareVersion": "",
+        "softwareVersion": "",
+        "serialNumber": "",
+        "nmea2000Version": 8370
+      }
+    },
+    "label": "ydnu",
+    "type": "NMEA2000"
+  },
+  "timestamp": "2020-11-29T22:21:50.443Z",
+  "self": "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+  "version": "2.0.0"
+}

@@ -17,7 +17,7 @@ const debug = require('debug')('signalk-batcher');
 const trace = require('debug')('signalk-batcher:trace');
 const _ = require('lodash');
 
-module.exports = function(app) {
+const to = function(app) {
     let _clear_publish_interval;
     let _clear_get_interval;
     let _last_publish_time;
@@ -338,4 +338,80 @@ module.exports = function(app) {
         start: _start,
         stop: _stop
     };
+};
+
+const from = function(state) {
+    let _visit_non_objects = function(obj, fn) {
+        let _do_visit = function(obj, path, fn) {
+            _.forIn(obj, function(value, key) {
+                const key_path = path != '' ? `${path}.${key}`: key;
+
+                // if value is an object, recurse (note that arrays are
+                // objects, so hence the plain object check)
+                if (_.isPlainObject(value)) {
+                    _do_visit(value, key_path, fn);
+                }
+                // otherwise, emit the parent
+                else {
+                    fn(path, obj);
+                }
+            });
+        };
+
+        return _do_visit(obj, '', fn);
+    };
+
+    let _transform_state = function(state) {
+        const context_self = `vessels.${state.self}`;
+        const base_time_ms = Date.parse(state.timestamp);
+
+        const vessel_state = _.get(state, context_self);
+
+        let records = [];
+
+        _visit_non_objects(vessel_state, function(path, value) {
+            // path is where we are in the model
+            // value is an array with source to list elements, ie:
+            //
+            //  {
+            //      test-source-1: [[0, 1], [1, 1.2], [2, 1]],
+            //      test-source-2: [[0, 1], [1], [2, 1.1]]
+            //  }
+            //
+            // Each key is a source reference (ie $source), the first element
+            // is the ms from base_time_ms, and the second is the value.  If
+            // value is ommitted, it's the same as the previous value.
+            _.forIn(value, function(points, $source) {
+                // cache the previous value; when a value in a point pair is
+                // missing, this is the value we should use
+                let cached_value;
+
+                // emit a metric for each point
+                points.forEach(function(p) {
+                    const time = base_time_ms + p[0];
+
+                    // cache a new cached_value, if we found one
+                    if (!_.isUndefined(p[1])) {
+                        cached_value = p[1];
+                    }
+
+                    records.push({
+                        path: path,
+                        value: cached_value,
+                        time: time,
+                        $source: $source
+                    });
+                });
+            });
+        });
+
+        return records;
+    };
+
+    return _transform_state(state);
+};
+
+module.exports = {
+    to: to,
+    from: from
 };
