@@ -17,7 +17,7 @@ const debug = require('debug')('signalk-batcher');
 const trace = require('debug')('signalk-batcher:trace');
 const _ = require('lodash');
 
-const to = function(app) {
+const to_batch = function(app) {
     let _clear_publish_interval;
     let _clear_get_interval;
     let _last_publish_time;
@@ -340,27 +340,38 @@ const to = function(app) {
     };
 };
 
-const from = function(state) {
-    let _visit_non_objects = function(obj, fn) {
-        let _do_visit = function(obj, path, fn) {
-            _.forIn(obj, function(value, key) {
-                const key_path = path != '' ? `${path}.${key}`: key;
+const _visit_non_objects = function(obj, fn) {
+    let _do_visit = function(obj, path, fn) {
+        let visited = {};
 
-                // if value is an object, recurse (note that arrays are
-                // objects, so hence the plain object check)
-                if (_.isPlainObject(value)) {
-                    _do_visit(value, key_path, fn);
-                }
-                // otherwise, emit the parent
-                else {
-                    fn(path, obj);
-                }
-            });
-        };
+        _.forIn(obj, function(value, key) {
+            const key_path = path != '' ? `${path}.${key}`: key;
 
-        return _do_visit(obj, '', fn);
+            // if value is an object, recurse (note that arrays are
+            // objects, so hence the plain object check)
+            if (_.isPlainObject(value)) {
+                _do_visit(value, key_path, fn);
+            }
+            // otherwise, we're here in the json object
+            //  path: {
+            //      test-source-1: [[0, 1], [1, 1.2], [2, 1]],
+            //      test-source-2: [[0, 1], [1], [2, 1.1]]
+            //  }
+            //
+            // path is path in the above
+            // key is $source (ie test-source-1)
+            // points is the list of timestamp, value pairs
+            //      (ie [[0, 1], [1, 1.2], [2, 1]])
+            else {
+                fn(path, key, value);
+            }
+        });
     };
 
+    return _do_visit(obj, '', fn);
+};
+
+const from_batch = function(batch) {
     let _transform_state = function(state) {
         const context_self = `vessels.${state.self}`;
         const base_time_ms = Date.parse(state.timestamp);
@@ -369,38 +380,33 @@ const from = function(state) {
 
         let records = [];
 
-        _visit_non_objects(vessel_state, function(path, value) {
-            // path is where we are in the model
-            // value is an array with source to list elements, ie:
+        _visit_non_objects(vessel_state, function(path, $source, points) {
+            // path is path in the above
+            // key is $source (ie test-source-1)
+            // points is the list of timestamp, value pairs
+            //      (ie [[0, 1], [1, 1.2], [2, 1]])
             //
-            //  {
-            //      test-source-1: [[0, 1], [1, 1.2], [2, 1]],
-            //      test-source-2: [[0, 1], [1], [2, 1.1]]
-            //  }
-            //
-            // Each key is a source reference (ie $source), the first element
-            // is the ms from base_time_ms, and the second is the value.  If
-            // value is ommitted, it's the same as the previous value.
-            _.forIn(value, function(points, $source) {
-                // cache the previous value; when a value in a point pair is
-                // missing, this is the value we should use
-                let cached_value;
+            // Within the points list, the first element is the ms from
+            // base_time_ms, and the second is the value.  If value is
+            // ommitted, it's the same as the previous value.  cache the
+            // previous value; when a value in a point pair is missing, this is
+            // the value we should use
+            let cached_value;
 
-                // emit a metric for each point
-                points.forEach(function(p) {
-                    const time = base_time_ms + p[0];
+            // emit a metric for each point
+            points.forEach(function(p) {
+                const time = base_time_ms + p[0];
 
-                    // cache a new cached_value, if we found one
-                    if (!_.isUndefined(p[1])) {
-                        cached_value = p[1];
-                    }
+                // cache a new cached_value, if we found one
+                if (!_.isUndefined(p[1])) {
+                    cached_value = p[1];
+                }
 
-                    records.push({
-                        path: path,
-                        value: cached_value,
-                        time: time,
-                        $source: $source
-                    });
+                records.push({
+                    path: path,
+                    value: cached_value,
+                    time: time,
+                    $source: $source
                 });
             });
         });
@@ -408,10 +414,126 @@ const from = function(state) {
         return records;
     };
 
-    return _transform_state(state);
+    return _transform_state(batch);
+};
+
+const from_batch_to_delta = function(batch) {
+    const context_self = `vessels.${batch.self}`;
+    const base_time_ms = Date.parse(batch.timestamp);
+
+    const vessel_state = _.get(batch, context_self);
+
+    // list of complex objects that need to be fixed, due to how signalk
+    // for some reasons allows complex objects for some data types
+    const complex_objects = [
+        { re: /\.position\.(latitude|longitude)$/, num: 2 },
+        { re: /\.attitude\.(yaw|roll|pitch)$/, num: 3 },
+    ];
+
+    // a cache of what we've seen so far for the complex objects
+    const complex_object_cache = {};
+
+    // helper function to do the actual publishing
+    const _to_delta = function($source, last_delta_t, path, value) {
+        // TODO: it'd be better to build up a batch and send a single
+        // delta, but since handleMessage overrides the source.label
+        // attribute, I have to pretend to be multiple providers
+        // instead of a single provider.  Additionally, I'm forced to pass
+        // in $source, rather than the source object.  Sigh.
+        //
+        // The real TODO is to fix signalk itself, once I understand the
+        // reasoning as to why it works this way.
+        return {
+            context: context_self,
+            updates: [{
+                $source: $source,
+                timestamp: new Date(base_time_ms + last_delta_t),
+                values: [{
+                    path: path,
+                    value: value
+                }]
+            }]
+        };
+    };
+
+    let deltas = [];
+
+    _visit_non_objects(vessel_state, function(path, $source, points) {
+        // skip to the end and publish the last time with the last
+        // unique value
+        const last_delta_t = _.last(points)[0];
+        // note: might have to fix this if we're dealing with a complex object
+        let last_value = _.findLast(points, function(pair) {
+            return pair.length == 2;
+        })[1];
+
+        // check against the complex objects to see if this path is one
+        // of the ones that needs to be fixed
+        const complex_obj = _.find(complex_objects, function(co) {
+            return co.re.test(path);
+        });
+
+        // if we found a complex object, adjust the path and value
+        if (complex_obj) {
+            // 1.take the last element off the path
+            const path_prefix = path.substring(0, path.lastIndexOf('.'));
+            const path_suffix = path.substring(path.lastIndexOf('.') + 1);
+
+            // 2. store what we've found so far
+            _.defaults(complex_object_cache, { [path_prefix]: {} });
+            _.merge(complex_object_cache[path_prefix], {
+                [path_suffix]: last_value
+            });
+
+            // 3. if we now have all the elements, reconstruct the object
+            // and construct the delta
+            if (_.keys(complex_object_cache[path_prefix]).length === complex_obj.num) {
+                trace(`fixed complex object ${path_prefix}`);
+                path = path_prefix;
+                last_value = complex_object_cache[path_prefix];
+
+                deltas.push(_to_delta($source, last_delta_t, path, last_value));
+            }
+        }
+        // this isn't a complex object, so construct the delta
+        else {
+            deltas.push(_to_delta($source, last_delta_t, path, last_value));
+        }
+    });
+
+    return deltas;
 };
 
 module.exports = {
-    to: to,
-    from: from
+    // periodic timer to invoke a callback with a new batch
+    to_batch: to_batch,
+
+    // returns a list of points in the form, where path will appear multiple
+    // times, once for each timestamp where there was a value:
+    //  [{
+    //      path: path,
+    //      value: value,
+    //      time: time_in_ms,
+    //      $source: $source
+    //  },
+    //  ...
+    //  ]
+    from_batch: from_batch,
+
+    // returns a list of signalk deltas, where each path appears only once and
+    // the value is the last value (ordered by time) from the batch:
+    //  [{
+    //      context: <self>,
+    //      updates: [{
+    //          $source, $source,
+    //          timestamp: time,
+    //          values: [{
+    //              path: path,
+    //              value: value
+    //          }]
+    //      }]
+    //  },
+    //  ...
+    //  ]
+    from_batch_to_delta: from_batch_to_delta,
 };

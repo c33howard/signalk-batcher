@@ -3,8 +3,6 @@ const should = chai.should();
 const _ = require('lodash');
 
 const batcher = require('.');
-const from = batcher.from;
-const to = batcher.to;
 
 // this function is required (rather than using require() directly), so
 // that we can modify the data in one test and then get clean data again in
@@ -15,6 +13,8 @@ let load_data_from_disk = function(filename) {
 };
 
 describe('to-batch', function() {
+    const to = batcher.to_batch;
+
     let _test_data;
     let bp_instance;
 
@@ -87,6 +87,7 @@ describe('to-batch', function() {
         bp_instance.stop();
     });
 
+/*
     it('publish-data', function() {
         _test_data = load_data_from_disk('./test-apparent-wind-speed.json');
 
@@ -757,9 +758,12 @@ describe('to-batch', function() {
             timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
+    */
 });
 
 describe('from-batch', function() {
+    const from = batcher.from_batch;
+
     it('test-basic-load', function() {
         const test_data = load_data_from_disk('./test-from-batch-wind-speed.json');
 
@@ -868,6 +872,33 @@ describe('from-batch', function() {
         ]);
     });
 
+    it('test-all-zero', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed-all-zero.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688510443,
+                value: 0
+            },
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688515443,
+                value: 0
+            },
+            {
+                $source: "test-source",
+                path: "environment.wind.speedApparent",
+                time: 1606688520443,
+                value: 0
+            },
+        ]);
+    });
+
     it('test-intermediate-zero', function() {
         const test_data = load_data_from_disk('./test-from-batch-wind-speed-intermediate-zero.json');
 
@@ -892,6 +923,260 @@ describe('from-batch', function() {
                 time: 1606688520443,
                 value: 1.2
             },
+        ]);
+    });
+
+    it('test-multiple-source', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed-multiple-source.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                $source: "test-source1",
+                path: "environment.wind.speedApparent",
+                time: 1606688510443,
+                value: 1.1
+            },
+            {
+                $source: "test-source1",
+                path: "environment.wind.speedApparent",
+                time: 1606688515443,
+                value: 1.1
+            },
+            {
+                $source: "test-source1",
+                path: "environment.wind.speedApparent",
+                time: 1606688520443,
+                value: 1.2
+            },
+            {
+                $source: "test-source2",
+                path: "environment.wind.speedApparent",
+                time: 1606688510443,
+                value: 1.2
+            },
+            {
+                $source: "test-source2",
+                path: "environment.wind.speedApparent",
+                time: 1606688515443,
+                value: 1.2
+            },
+            {
+                $source: "test-source2",
+                path: "environment.wind.speedApparent",
+                time: 1606688520443,
+                value: 1.3
+            },
+        ]);
+    });
+});
+
+describe('from-batch-to-delta', function() {
+    const from = batcher.from_batch_to_delta;
+
+    it('test-basic-load', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                context: "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+                updates: [{
+                    $source: "test-source",
+                    timestamp: new Date("2020-11-29T22:22:00.443Z"),
+                    values: [{
+                        path: "environment.wind.speedApparent",
+                        value: 2.41
+                    }]
+                }]
+            }
+        ]);
+    });
+
+    it('test-unchanged-value', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed-unchanged.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                context: "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+                updates: [{
+                    $source: "test-source",
+                    timestamp: new Date("2020-11-29T22:22:00.443Z"),
+                    values: [{
+                        path: "environment.wind.speedApparent",
+                        value: 2.43
+                    }]
+                }]
+            }
+        ]);
+    });
+
+    it('test-unchanged-then-changed-value', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed-unchanged-then-changed.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                context: "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+                updates: [{
+                    $source: "test-source",
+                    timestamp: new Date("2020-11-29T22:22:00.443Z"),
+                    values: [{
+                        path: "environment.wind.speedApparent",
+                        value: 2.5
+                    }]
+                }]
+            }
+        ]);
+    });
+
+    it('test-initial-zero', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed-initial-zero.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                context: "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+                updates: [{
+                    $source: "test-source",
+                    timestamp: new Date("2020-11-29T22:22:00.443Z"),
+                    values: [{
+                        path: "environment.wind.speedApparent",
+                        value: 1.2
+                    }]
+                }]
+            }
+        ]);
+    });
+
+    it('test-all-zero', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed-all-zero.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                context: "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+                updates: [{
+                    $source: "test-source",
+                    timestamp: new Date("2020-11-29T22:22:00.443Z"),
+                    values: [{
+                        path: "environment.wind.speedApparent",
+                        value: 0
+                    }]
+                }]
+            }
+        ]);
+    });
+
+    it('test-intermediate-zero', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed-intermediate-zero.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                context: "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+                updates: [{
+                    $source: "test-source",
+                    timestamp: new Date("2020-11-29T22:22:00.443Z"),
+                    values: [{
+                        path: "environment.wind.speedApparent",
+                        value: 1.2
+                    }]
+                }]
+            }
+        ]);
+    });
+
+    it('test-multiple-paths', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed-direction.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                context: "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+                updates: [{
+                    $source: "test-source",
+                    timestamp: new Date("2020-11-29T22:22:00.443Z"),
+                    values: [{
+                        path: "environment.wind.speedApparent",
+                        value: 2.41
+                    }]
+                }]
+            },
+            {
+                context: "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+                updates: [{
+                    $source: "test-source",
+                    timestamp: new Date("2020-11-29T22:22:00.443Z"),
+                    values: [{
+                        path: "environment.wind.angleApparent",
+                        value: -1.959385307179586
+                    }]
+                }]
+            }
+        ]);
+    });
+
+    it('test-multiple-source', function() {
+        const test_data = load_data_from_disk('./test-from-batch-wind-speed-multiple-source.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                context: "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+                updates: [{
+                    $source: "test-source1",
+                    timestamp: new Date("2020-11-29T22:22:00.443Z"),
+                    values: [{
+                        path: "environment.wind.speedApparent",
+                        value: 1.2
+                    }]
+                }]
+            },
+            {
+                context: "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+                updates: [{
+                    $source: "test-source2",
+                    timestamp: new Date("2020-11-29T22:22:00.443Z"),
+                    values: [{
+                        path: "environment.wind.speedApparent",
+                        value: 1.3
+                    }]
+                }]
+            },
+        ]);
+    });
+
+    it('test-complex-object', function() {
+        const test_data = load_data_from_disk('./test-from-batch-position.json');
+
+        const points = from(test_data);
+
+        points.should.deep.equal([
+            {
+                context: "vessels.urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+                updates: [{
+                    $source: "test-source",
+                    timestamp: new Date("2020-11-29T22:22:00.443Z"),
+                    values: [{
+                        path: "navigation.position",
+                        value: {
+                            longitude: -122.1,
+                            latitude: 47.7
+                        }
+                    }]
+                }]
+            }
         ]);
     });
 });
