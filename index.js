@@ -187,7 +187,7 @@ const to_batch = function(app) {
 
             // for each key in the vessel, descend until we find something
             // which has a $source (which everything will have, since the full
-            // model always uses the pointer method
+            // model always uses the pointer method)
             _visit(vessel, '$source', function(path, value) {
                 // skip anything filtered out
                 if (!filter_function(path)) {
@@ -246,16 +246,15 @@ const to_batch = function(app) {
         // construct the filter function once and use the result
         const add_to_batch = _add_current_state_to_batch(options);
 
-        // cache the points here for a batch upload
-        // key = signalk path, value = value
-        // this batch has the last value registered during an interval and
-        // that's what will be published to timestream
+        // the object that we will publish, containing the accumulated state
+        // over time
         let batch_of_points = _reset_batch();
 
         // periodically emit the metrics for publishing
         publish_interval = _set_interval(options.publish_interval, function() {
             debug(`_publish`);
 
+            // ensure that the top level object has the appropriate keys
             _.defaults(batch_of_points, {
                 timestamp: new Date(_last_publish_time).toISOString(),
                 self: app.selfId,
