@@ -87,7 +87,6 @@ describe('to-batch', function() {
         bp_instance.stop();
     });
 
-/*
     it('publish-data', function() {
         _test_data = load_data_from_disk('./test-apparent-wind-speed.json');
 
@@ -758,7 +757,6 @@ describe('to-batch', function() {
             timestamp: "2020-11-29T22:21:50.443Z"
         });
     });
-    */
 });
 
 describe('from-batch', function() {
