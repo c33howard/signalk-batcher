@@ -92,7 +92,6 @@ describe('to-batch', function() {
 
         init();
 
-        get_interval.trigger();
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -123,12 +122,11 @@ describe('to-batch', function() {
 
         // get data
         get_interval.trigger();
+
         // advance time
         _now++;
-        // get data
-        get_interval.trigger();
 
-        // write
+        // publish
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -160,14 +158,13 @@ describe('to-batch', function() {
 
         // get data
         get_interval.trigger();
+
         // advance time
         _now++;
         // update the data
         update_data(_test_data, 'environment.wind.speedApparent', _now, 1.2);
-        // get data
-        get_interval.trigger();
 
-        // write
+        // publish
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -198,14 +195,13 @@ describe('to-batch', function() {
 
         // get data
         get_interval.trigger();
+
         // advance time
         _now++;
         // update the data
         update_data(_test_data, 'environment.wind.speedApparent', _now, 0);
-        // get data
-        get_interval.trigger();
 
-        // write
+        // publish
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -236,20 +232,21 @@ describe('to-batch', function() {
 
         // get data
         get_interval.trigger();
+
         // advance time
         _now++;
         // update the data
         update_data(_test_data, 'environment.wind.speedApparent', _now, 0);
-        // get data
-        get_interval.trigger();
-        // advance time
-        _now++;
-        // update the data
-        update_data(_test_data, 'environment.wind.speedApparent', _now, 0);
+
         // get data
         get_interval.trigger();
 
-        // write
+        // advance time
+        _now++;
+        // update the data
+        update_data(_test_data, 'environment.wind.speedApparent', _now, 0);
+
+        // publish
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -280,14 +277,13 @@ describe('to-batch', function() {
 
         // get data
         get_interval.trigger();
+
         // advance time
         _now++;
         update_data(_test_data, 'environment.wind.speedApparent', _now, 1.2);
         update_data(_test_data, 'environment.wind.angleApparent', _now, 1.978);
-        // get data
-        get_interval.trigger();
 
-        // write
+        // publish
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -321,14 +317,13 @@ describe('to-batch', function() {
 
         // get data
         get_interval.trigger();
+
         // advance time
         _now++;
         // change wind speed
         update_data(_test_data, 'environment.wind.speedApparent', _now, 1.2);
-        // get data
-        get_interval.trigger();
 
-        // write
+        // publish
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -357,10 +352,14 @@ describe('to-batch', function() {
 
         init();
 
-        // get data
+        // get the data
         get_interval.trigger();
 
-        // write
+        // advance time, which makes the observation older than the new
+        // _last_publish_time that we'll get after the publish
+        _now += 100;
+
+        // publish
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -383,13 +382,19 @@ describe('to-batch', function() {
             timestamp: "2020-11-29T22:21:50.443Z"
         });
 
-        // write again, should be empty
+        // publish again, no updated data, so this should be empty
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
             version: "2.0.0",
             self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
-            timestamp: "2020-11-29T22:21:50.443Z"
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {}
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.543Z"
         });
     });
 
@@ -398,7 +403,6 @@ describe('to-batch', function() {
 
         init();
 
-        get_interval.trigger();
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -433,7 +437,6 @@ describe('to-batch', function() {
 
         init();
 
-        get_interval.trigger();
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -441,6 +444,51 @@ describe('to-batch', function() {
             self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
             vessels: {
                 "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {}
+            },
+            sources: {
+                "test-source": {}
+            },
+            timestamp: "2020-11-29T22:21:50.543Z"
+        });
+    });
+
+    it('include-data-at-end-of-period', function() {
+        _test_data = load_data_from_disk('./test-apparent-wind-speed-angle.json');
+
+        // start in the future, so what we get from the source is old
+        _now += 100;
+
+        init();
+
+        // get the data on our regular cadence, the data is too old, so it's
+        // not included
+        get_interval.trigger();
+
+        // get a fresh observation from the source, so we have data that should
+        // be published now
+        _now += 100;
+        update_data(_test_data, 'environment.wind.speedApparent', _now, 1.2);
+
+        // publish, and ensure that the data was added, even though we didn't
+        // do another get, because if we don't include it, the next get will
+        // consider it too old and we'll never see the data point, which would
+        // be a problem for data that we fetch on the same period as our
+        // publish interval
+        publish_interval.trigger();
+
+        publish.last().should.deep.equal({
+            version: "2.0.0",
+            self: "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930",
+            vessels: {
+                "urn:mrn:signalk:uuid:635ed58a-540c-467a-a42b-b093056a5930": {
+                    environment: {
+                        wind: {
+                            speedApparent: {
+                                "test-source": [[100, 1.2]]
+                            }
+                        }
+                    }
+                }
             },
             sources: {
                 "test-source": {}
@@ -457,7 +505,6 @@ describe('to-batch', function() {
             filter_list: []
         });
 
-        get_interval.trigger();
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -481,7 +528,6 @@ describe('to-batch', function() {
             filter_list: ['environment.wind.speedApparent']
         });
 
-        get_interval.trigger();
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -513,7 +559,6 @@ describe('to-batch', function() {
             filter_list: ['environment.wind.speedApparent']
         });
 
-        get_interval.trigger();
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -545,7 +590,6 @@ describe('to-batch', function() {
             filter_list: ['environment.*']
         });
 
-        get_interval.trigger();
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -580,7 +624,6 @@ describe('to-batch', function() {
             filter_list: ['environment.*']
         });
 
-        get_interval.trigger();
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -607,7 +650,6 @@ describe('to-batch', function() {
 
         init();
 
-        get_interval.trigger();
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -637,7 +679,6 @@ describe('to-batch', function() {
 
         init();
 
-        get_interval.trigger();
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -671,7 +712,6 @@ describe('to-batch', function() {
 
         init();
 
-        get_interval.trigger();
         publish_interval.trigger();
 
         publish.last().should.deep.equal({
@@ -707,7 +747,6 @@ describe('to-batch', function() {
 
         init();
 
-        get_interval.trigger();
         publish_interval.trigger();
 
         publish.last().should.deep.equal({

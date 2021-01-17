@@ -261,6 +261,14 @@ const to_batch = function(app) {
                 version: "2.0.0"
             });
 
+            // pickup any changed points since the last get_interval, to ensure
+            // they're included in the publish.  This is especially important
+            // if a data point is changed on the same period as we publish,
+            // because if it's not published now, it won't be included in the
+            // next get_interval either, as it'll be "too old" for the next
+            // batch.
+            add_to_batch(batch_of_points, app.signalk.retrieve());
+
             // publish
             publish_callback(batch_of_points);
 
